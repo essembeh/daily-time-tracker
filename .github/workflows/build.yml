@@ -1,0 +1,95 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+env:
+  UUID: daily-time-tracker@essembeh.org
+
+jobs:
+  check:
+    name: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev-bin
+
+      # ESM modules: node --check reads CJS from a path, so feed it on stdin.
+      - name: Syntax check
+        run: |
+          for f in src/*.js; do
+            node --input-type=module --check < "$f"
+            echo "$f OK"
+          done
+
+      - name: Unit tests
+        run: node tests/unit.mjs
+
+      - name: Markdown tables
+        run: node tests/check-markdown.mjs
+
+      - name: GSettings schema
+        run: glib-compile-schemas --strict --dry-run src/schemas/
+
+      - name: Shell scripts
+        run: bash -n tests/nested.sh
+
+      - name: metadata.json is valid and matches the UUID
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          meta = json.load(open('src/metadata.json'))
+          assert meta['uuid'] == 'daily-time-tracker@essembeh.org', meta['uuid']
+          for key in ('name', 'description', 'shell-version', 'version',
+                      'settings-schema', 'gettext-domain', 'url'):
+              assert key in meta, f'missing {key}'
+          print('metadata.json OK')
+          PY
+
+  build:
+    name: extension zip
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev-bin zip
+
+      - name: Build extension zip
+        run: |
+          glib-compile-schemas src/schemas/
+          cd src
+          zip -r "../$UUID.shell-extension.zip" \
+            *.js metadata.json stylesheet.css schemas/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-time-tracker-shell-extension
+          path: ${{ env.UUID }}.shell-extension.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: daily-time-tracker-shell-extension
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.UUID }}.shell-extension.zip
+          generate_release_notes: true

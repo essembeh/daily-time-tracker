@@ -1,0 +1,97 @@
+/* The whole panel feedback: nothing logged today, or logged. */
+.dtt-icon-empty {
+    color: #ff7800;
+}
+
+.dtt-icon-logged {
+    color: #33d17a;
+}
+
+.dtt-header {
+    font-weight: bold;
+}
+
+.dtt-nav {
+    padding: 4px;
+    border-radius: 99px;
+}
+
+.dtt-grid {
+    spacing: 2px;
+    padding: 4px 0;
+}
+
+.dtt-column {
+    spacing: 2px;
+    padding: 4px;
+    border-radius: 8px;
+    min-width: 50px;
+    /* Transparent by default so the month separator does not shift the columns. */
+    border-left: 2px solid transparent;
+}
+
+/* First day of a month inside the window: the boundary must be unmistakable. */
+.dtt-column.dtt-month-start {
+    border-left: 2px solid rgba(255, 255, 255, 0.55);
+    /* A real gutter: a hairline alone reads as a border, not as a break. */
+    margin-left: 8px;
+}
+
+.dtt-month-tag {
+    font-size: 0.7em;
+    font-weight: bold;
+    padding-bottom: 2px;
+}
+
+.dtt-month-start .dtt-month-tag {
+    color: #ff7800;
+}
+
+.dtt-column.dtt-today {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dtt-column.dtt-other-month {
+    opacity: 0.35;
+}
+
+/* Not yet worked, but still editable — dimmed less than an out-of-month day. */
+.dtt-column.dtt-future {
+    opacity: 0.55;
+}
+
+.dtt-day-name {
+    font-size: 0.8em;
+}
+
+.dtt-day-number {
+    font-size: 0.8em;
+    opacity: 0.7;
+    padding-bottom: 2px;
+}
+
+.dtt-step {
+    padding: 2px 0;
+    border-radius: 6px;
+    font-weight: bold;
+}
+
+.dtt-value {
+    padding: 4px 0;
+    border-radius: 6px;
+    font-weight: bold;
+}
+
+.dtt-entry {
+    min-width: 44px;
+}
+
+.dtt-action {
+    padding: 6px 12px;
+    border-radius: 8px;
+}
+
+.dtt-action-icon {
+    padding: 6px;
+    border-radius: 8px;
+}

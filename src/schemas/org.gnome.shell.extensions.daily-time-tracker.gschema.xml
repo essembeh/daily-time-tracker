@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.daily-time-tracker"
+          path="/org/gnome/shell/extensions/daily-time-tracker/">
+    <key name="step-hours" type="d">
+      <range min="0.5" max="4"/>
+      <default>0.5</default>
+      <summary>Step</summary>
+      <description>Hours added or removed by one click on the + and − buttons.</description>
+    </key>
+    <key name="max-hours" type="d">
+      <range min="1" max="24"/>
+      <default>12</default>
+      <summary>Maximum hours per day</summary>
+      <description>Upper bound of a single day: the + button stops there and a typed value is capped to it.</description>
+    </key>
+    <key name="show-weekends" type="b">
+      <default>true</default>
+      <summary>Show weekends</summary>
+      <description>Display Saturdays and Sundays in the popup. When off, they are hidden and the daily reminder stays silent on those days.</description>
+    </key>
+    <key name="reminder-enabled" type="b">
+      <default>false</default>
+      <summary>Daily reminder</summary>
+      <description>Send a notification every day at the reminder time.</description>
+    </key>
+    <key name="reminder-time" type="s">
+      <default>'18:00'</default>
+      <summary>Reminder time</summary>
+      <description>Time of the daily reminder, as HH:MM in local time.</description>
+    </key>
+    <key name="export-dir" type="s">
+      <default>''</default>
+      <summary>Export folder</summary>
+      <description>Folder the CSV export is written to. Empty means the user Documents directory.</description>
+    </key>
+    <key name="data-path" type="s">
+      <default>''</default>
+      <summary>Data file</summary>
+      <description>Path of the JSON data file. Empty means the XDG default, ~/.local/share/daily-time-tracker/data.json.</description>
+    </key>
+  </schema>
+</schemalist>
