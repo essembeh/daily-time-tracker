@@ -3,8 +3,8 @@
     "name": "Daily time tracker",
     "description": "Manually log the hours worked each day, read the monthly total back, export it as CSV",
     "shell-version": ["50"],
-    "version": 1,
-    "version-name": "1",
+    "version": 2,
+    "version-name": "2",
     "settings-schema": "org.gnome.shell.extensions.daily-time-tracker",
     "gettext-domain": "daily-time-tracker@essembeh.org",
     "url": "https://github.com/essembeh/daily-time-tracker"
