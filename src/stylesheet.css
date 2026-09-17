@@ -16,6 +16,13 @@
     border-radius: 99px;
 }
 
+.dtt-header-today {
+    padding: 4px 10px;
+    margin-left: 8px;
+    border-radius: 99px;
+    font-weight: normal;
+}
+
 .dtt-grid {
     spacing: 2px;
     padding: 4px 0;

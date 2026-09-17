@@ -94,7 +94,7 @@ Explicitement hors périmètre, pour garder l'outil simple :
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  ‹          7 – 13 septembre 2026               ›  │   (1)
+│  ‹      7 – 13 septembre 2026     ›  [ Today ]     │   (1)
 ├────────────────────────────────────────────────────┤
 │   Lun    Mar    Mer    Jeu   [VEN]    Sam    Dim   │   (2)
 │   07     08     09     10     11      12     13    │
@@ -105,7 +105,7 @@ Explicitement hors périmètre, pour garder l'outil simple :
 ├────────────────────────────────────────────────────┤
 │  Septembre 2026                          34.5 h    │   (5)
 ├────────────────────────────────────────────────────┤
-│  [ Today ]                 [ Export CSV ]  [ ⚙ ]   │   (6)
+│                            [ Export CSV ]  [ ⚙ ]   │   (6)
 └────────────────────────────────────────────────────┘
 
   VEN = aujourd'hui (mis en évidence)
@@ -124,6 +124,12 @@ Explicitement hors périmètre, pour garder l'outil simple :
 - `‹` recule d'une semaine, `›` avance d'une semaine. **Aucune borne** dans un sens
   ni dans l'autre : le futur est éditable (§4.3), il n'y a donc plus de raison de
   bloquer la navigation avant.
+- **Chaque ouverture du popup repart sur la semaine courante** : la navigation n'est
+  pas mémorisée d'une ouverture à l'autre. Le popup répond d'abord à « combien
+  aujourd'hui / cette semaine ».
+- **Aujourd'hui** : ramène la fenêtre sur la semaine courante. Désactivé quand elle
+  y est déjà. Il vit ici, avec les dates et les flèches, parce qu'il navigue — pas
+  dans la barre d'actions du bas, qui porte les commandes globales.
 
 **(2) Bandeau de la semaine**
 
@@ -187,7 +193,6 @@ Explicitement hors périmètre, pour garder l'outil simple :
 
 **(6) Actions**
 
-- **Aujourd'hui** : ramène la fenêtre sur le jour courant. Désactivé si déjà dessus.
 - **Export CSV** : exporte le mois affiché (§5).
 - **⚙** : ouvre la fenêtre de préférences (`extension.openPreferences()`) et ferme le
   popup. Évite le détour par l'application Extensions pour changer un réglage.

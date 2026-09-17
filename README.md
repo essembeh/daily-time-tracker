@@ -21,7 +21,7 @@ That is the whole extension.
 
 ```
                                     ┌──────────────────────────────────────────────┐
-  ⏱ ← orange: today is empty        │  ‹         7 – 13 September 2026          ›  │
+  ⏱ ← orange: today is empty        │  ‹   7 – 13 September 2026   ›  [ Today ]    │
   ⏱ ← green:  today is logged       ├──────────────────────────────────────────────┤
                                     │   Mon   Tue   Wed   Thu  [FRI]  Sat   Sun    │
                                     │   07    08    09    10    11    12    13     │
@@ -32,7 +32,7 @@ That is the whole extension.
                                     ├──────────────────────────────────────────────┤
                                     │  September 2026                     34.5 h   │
                                     ├──────────────────────────────────────────────┤
-                                    │  [ Today ]         [ Export CSV ]   [ ⚙ ]    │
+                                    │                    [ Export CSV ]   [ ⚙ ]    │
                                     └──────────────────────────────────────────────┘
 
                                       Sat and Sun are in the future here: dimmed,

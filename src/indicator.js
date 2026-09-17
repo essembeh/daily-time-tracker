@@ -81,8 +81,12 @@ class TimeTrackerIndicator extends PanelMenu.Button {
 
         this.menu.connectObject('open-state-changed', (_menu, isOpen) => {
             this._cancelEdit();
-            if (isOpen)
-                this._refresh(); // The shell may have been open across midnight.
+            if (isOpen) {
+                // Every opening starts on the current week, whatever was browsed
+                // last time; the shell may also have been open across midnight.
+                this._anchor = startOfWeek(today());
+                this._refresh();
+            }
         }, this);
 
         this._scheduleMidnight();
@@ -124,9 +128,16 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
+        this._todayButton = new St.Button({
+            label: _('Today'),
+            style_class: 'dtt-header-today button',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._todayButton.connect('clicked', () => this._goToday());
         header.add_child(this._prevButton);
         header.add_child(this._headerLabel);
         header.add_child(this._nextButton);
+        header.add_child(this._todayButton);
         this.menu.addMenuItem(header);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -166,12 +177,6 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             reactive: false,
             can_focus: false,
         });
-        this._todayButton = new St.Button({
-            label: _('Today'),
-            style_class: 'dtt-action button',
-            x_expand: true,
-        });
-        this._todayButton.connect('clicked', () => this._goToday());
         const exportButton = new St.Button({
             label: _('Export CSV'),
             style_class: 'dtt-action button',
@@ -189,7 +194,6 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             this.menu.close();
             this._openPreferences();
         });
-        actions.add_child(this._todayButton);
         actions.add_child(exportButton);
         actions.add_child(prefsButton);
         this.menu.addMenuItem(actions);
