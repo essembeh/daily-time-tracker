@@ -33,15 +33,15 @@
     padding: 4px;
     border-radius: 8px;
     min-width: 50px;
-    /* Transparent by default so the month separator does not shift the columns. */
-    border-left: 2px solid transparent;
 }
 
-/* First day of a month inside the window: the boundary must be unmistakable. */
-.dtt-column.dtt-month-start {
-    border-left: 2px solid rgba(255, 255, 255, 0.55);
-    /* A real gutter: a hairline alone reads as a border, not as a break. */
-    margin-left: 8px;
+/* First day of a month inside the window: a real gutter, a hairline alone reads as
+   a border, not as a break. */
+.dtt-month-separator {
+    width: 2px;
+    margin: 4px 3px;
+    border-radius: 1px;
+    background-color: rgba(255, 255, 255, 0.4);
 }
 
 .dtt-month-tag {

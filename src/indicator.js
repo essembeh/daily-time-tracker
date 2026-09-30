@@ -54,6 +54,8 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         // First day of the displayed week.
         this._anchor = startOfWeek(today());
         this._columns = [];
+        // Month of the total and of the CSV export, resolved by _refresh().
+        this._month = null;
         this._editing = null;
         this._scrollDelta = 0;
         this._midnightId = 0;
@@ -149,6 +151,7 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         for (let index = 0; index < DAYS; index++) {
             const column = this._buildColumn(index);
             this._columns.push(column);
+            gridBox.add_child(column.separator);
             gridBox.add_child(column.actor);
         }
         grid.add_child(gridBox);
@@ -219,6 +222,12 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             index,
             actor,
             key: null,
+            // A sibling of the column, not its border: the column's opacity and
+            // rounded corners would swallow it.
+            separator: new St.Widget({
+                style_class: 'dtt-month-separator',
+                visible: false,
+            }),
             // Always present, empty on days that do not start a month: keeps every
             // column the same height whatever the window shows.
             month: new St.Label({
@@ -283,9 +292,9 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         const todayKey = dayKey(today());
         const max = this._maxHours();
 
-        // The month shown in the total is the one the week ENDS in, so it matches the
-        // right edge of the grid; days of any other month are dimmed. Resolved in a
-        // first pass because hiding weekends can move that last day.
+        // The total follows today's month while the current week is shown, otherwise
+        // the week's last visible day; days of any other month are dimmed. Resolved
+        // in a first pass because hiding weekends can move that last day.
         const showWeekends = this._settings.get_boolean('show-weekends');
         const visibleDates = [];
         for (let index = 0; index < DAYS; index++) {
@@ -293,8 +302,12 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             if (showWeekends || !isWeekend(date))
                 visibleDates.push(date);
         }
-        const last = visibleDates[visibleDates.length - 1] ?? this._anchor;
-        const month = last.get_month();
+        const onCurrentWeek = dayKey(this._anchor) === dayKey(startOfWeek(today()));
+        const reference = onCurrentWeek
+            ? today()
+            : visibleDates[visibleDates.length - 1] ?? this._anchor;
+        const month = reference.get_month();
+        this._month = {year: reference.get_year(), month};
 
         this._headerLabel.text = this._weekLabel(visibleDates);
 
@@ -306,6 +319,7 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             const hours = this._storage.get(key);
 
             column.actor.visible = showWeekends || !isWeekend(date);
+            column.separator.visible = false;
             if (!column.actor.visible)
                 continue;
 
@@ -327,19 +341,19 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             setClass(column.actor, 'dtt-future', key > todayKey);
             setClass(column.actor, 'dtt-month-start',
                 startsMonth && !isFirstVisible);
+            column.separator.visible = startsMonth && !isFirstVisible;
             isFirstVisible = false;
 
             setEnabled(column.plus, hours < max);
             setEnabled(column.minus, hours > 0);
         }
 
-        this._monthLabel.text = capitalize(last.format('%B %Y'));
+        this._monthLabel.text = capitalize(reference.format('%B %Y'));
         this._monthTotalLabel.text =
-            `${formatHours(this._storage.monthTotal(last.get_year(), month))} h`;
+            `${formatHours(this._storage.monthTotal(this._month.year, month))} h`;
 
         // Navigation is unbounded in both directions now that the future is
         // editable; only "Today" knows whether it has anything to do.
-        const onCurrentWeek = dayKey(this._anchor) === dayKey(startOfWeek(today()));
         setEnabled(this._todayButton, !onCurrentWeek);
 
         this._refreshIcon();
@@ -453,8 +467,8 @@ class TimeTrackerIndicator extends PanelMenu.Button {
 
     _exportCsv() {
         this._storage.flush();
-        const year = this._anchor.get_year();
-        const month = this._anchor.get_month();
+        // Same month as the total on screen, never a different one.
+        const {year, month} = this._month;
         const {content, total} = buildMonthCsv(this._storage, year, month);
         const file = Gio.File.new_for_path(GLib.build_filenamev([
             resolveExportDir(this._settings.get_string('export-dir')),

@@ -155,7 +155,10 @@ Explicitement hors périmètre, pour garder l'outil simple :
      au lieu d'ellipser, donc `septembre` ou même `sept.` ne tient pas. Même raison
      pour le nom de jour, affiché sans son point (`Sam`) ;
   2. une **gouttière** s'ouvre à gauche de cette colonne (marge + trait vertical
-     de 2 px) : un simple filet se lit comme une bordure, pas comme une rupture ;
+     de 2 px) : un simple filet se lit comme une bordure, pas comme une rupture. Le
+     trait est un **élément à part**, pas la bordure de la colonne : l'opacité des
+     jours atténués et les coins arrondis le faisaient disparaître, il ne restait
+     qu'un trou dans la grille ;
   3. les jours d'un **mois différent** de celui du total affiché (5) sont nettement
      **atténués** — ils ne comptent pas dans ce total.
 
@@ -183,17 +186,24 @@ Explicitement hors périmètre, pour garder l'outil simple :
 
 - Libellé du mois affiché dans la fenêtre + **somme des heures de ce mois calendaire**
   (tous les jours du mois, pas seulement les 7 affichés).
-- Si la semaine chevauche deux mois, le mois retenu est celui du **dernier jour
-  affiché** — le bord droit de la grille. C'est le même mois qui sert de référence à
-  l'atténuation des jours « d'un autre mois », les deux restent donc cohérents, y
-  compris quand les week-ends sont masqués.
+- Si la semaine chevauche deux mois, le mois retenu est :
+  - sur la **semaine courante**, le **mois d'aujourd'hui** — le 29 septembre, la
+    semaine du 28 septembre au 4 octobre totalise septembre, pas octobre ;
+  - sur toute autre semaine, celui du **dernier jour affiché** — le bord droit de la
+    grille.
+- Le total du **mois précédent** se retrouve avec `‹` : la semaine d'avant est
+  entièrement dans ce mois (ou le chevauche, et c'est alors son dernier jour qui
+  compte).
+- Ce mois de référence sert aussi à l'atténuation des jours « d'un autre mois » et à
+  l'export (§5) : total, grisé et CSV restent cohérents, y compris quand les
+  week-ends sont masqués. Aujourd'hui n'est donc jamais grisé.
 - **Les week-ends masqués restent comptés.** Masquer les samedis est un choix
   d'affichage, pas une affirmation qu'un samedi déjà saisi n'a pas été travaillé :
   des heures ne doivent jamais disparaître d'un total à cause d'une préférence.
 
 **(6) Actions**
 
-- **Export CSV** : exporte le mois affiché (§5).
+- **Export CSV** : exporte le mois du total affiché (5), cf. §5.
 - **⚙** : ouvre la fenêtre de préférences (`extension.openPreferences()`) et ferme le
   popup. Évite le détour par l'application Extensions pour changer un réglage.
 
@@ -262,7 +272,8 @@ Une entrée = **une date** + **une durée en heures**. Rien d'autre.
 
 ## 5. Export CSV
 
-- Déclenché par le bouton **Export CSV**, exporte le **mois affiché**.
+- Déclenché par le bouton **Export CSV**, exporte le **mois du total affiché**
+  (§3.2 (5)).
 - Destination : **un dossier choisi une fois dans les préférences** (`export-dir`,
   défaut : répertoire Documents), sous le nom `YYYY-MM Daily time tracker.csv`
   (écrasé s'il existe). Le dossier est créé s'il n'existe pas.
@@ -363,6 +374,7 @@ pas** (cf. §4.2).
 - [ ] `‹` / `›` décalent d'une semaine, sans borne.
 - [ ] Un jour futur est grisé mais reste modifiable (`+`, molette, clavier).
 - [ ] Le total du mois correspond à la somme de tous les jours du mois affiché.
+- [ ] Semaine courante à cheval sur deux mois : total et export du mois d'aujourd'hui.
 - [ ] Week-ends masqués : 5 colonnes, icône neutre le samedi, aucun rappel.
 - [ ] Le premier jour de semaine suit la locale (lundi en `fr`).
 - [ ] Les week-ends masqués comptent toujours dans le total du mois et dans le CSV.
