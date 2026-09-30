@@ -31,6 +31,14 @@ export XDG_DATA_HOME="$(mktemp -d)/data"
 mkdir -p "$XDG_DATA_HOME/gnome-shell/extensions"
 ln -sfn "$REPO_ROOT/src" "$XDG_DATA_HOME/gnome-shell/extensions/$UUID"
 
+# gschemas.compiled is gitignored: rebuild it on every run so a fresh clone or an
+# edited schema never leaves the extension without its settings.
+if command -v glib-compile-schemas >/dev/null; then
+  glib-compile-schemas "$REPO_ROOT/src/schemas"
+else
+  nix-shell -p glib --run "glib-compile-schemas '$REPO_ROOT/src/schemas'"
+fi
+
 echo "nested XDG_DATA_HOME: $XDG_DATA_HOME"
 
 exec dbus-run-session -- bash -c "

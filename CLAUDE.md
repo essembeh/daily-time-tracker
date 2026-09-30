@@ -118,7 +118,7 @@ When Seb asks for a new feature, do NOT just implement it:
   - extension JS → kill + relaunch the nested (ESM modules load once per process)
   - `stylesheet.css` → disable/enable the extension (Extensions app in the nested)
   - `prefs.js` → just reopen the prefs window (separate process)
-  - gschema → recompile, then kill + relaunch
+  - gschema → kill + relaunch (`tests/nested.sh` recompiles `gschemas.compiled`)
 - A symlink to the extension must point at `src/`, not at the repo root — otherwise
   the shell finds no `metadata.json`/`schemas/` and the extension stays in `ERROR`.
 
