@@ -1,2 +1,3 @@
 src/schemas/gschemas.compiled
 *.shell-extension.zip
+.direnv/
