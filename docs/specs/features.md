@@ -4,7 +4,7 @@ Extension GNOME Shell de **saisie manuelle** du temps de travail quotidien, pour
 préparer une facturation à l'heure.
 
 - **Statut** : draft
-- **Date** : 2026-09-12
+- **Date** : 2026-11-09
 - **Cible** : GNOME Shell 50 (NixOS 26.05)
 
 > Cette spec est rédigée et itérée **en français**. Le reste du dépôt (code,
@@ -51,10 +51,21 @@ détection d'activité. Un chrono produit des valeurs précises mais fausses (pa
 réunions hors poste, oublis d'arrêt) et impose une discipline coûteuse ; la valeur
 facturée est connue à la fin d'une demi-journée, c'est elle qu'on saisit.
 
-### Un seul jeu de données
+### Quelques projets, rien de plus
 
-L'extension **ne gère ni projets, ni clients, ni tags** : toutes les heures saisies
-appartiennent à un unique jeu de données, local à la session.
+Une même journée peut être partagée entre plusieurs missions facturées séparément.
+L'extension gère donc **jusqu'à 4 projets** (§3.3). Un projet, c'est **un nom et
+une couleur**, rien d'autre :
+
+- pas de client, pas de taux, pas de hiérarchie, pas de tags, pas de description ;
+- la couleur n'est **pas un réglage** : elle dépend de la position du projet (§3.3) ;
+- le sélecteur est **toujours affiché**, même avec un seul projet. Un affichage
+  conditionnel coûterait un second chemin dans le code et cacherait le moyen de créer
+  un projet.
+
+Le plafond de 4 projets est voulu. Il garantit que le sélecteur tient sur une ligne
+du popup. Il marque aussi la limite de l'outil : au-delà, il faut un vrai logiciel de
+suivi d'activité.
 
 ---
 
@@ -63,7 +74,8 @@ appartiennent à un unique jeu de données, local à la session.
 Explicitement hors périmètre, pour garder l'outil simple :
 
 - Chronomètre / start-stop / détection d'inactivité.
-- Multi-projets, multi-clients, catégories, tags, descriptions d'activité.
+- Plus de 4 projets, clients, sous-projets, catégories, tags, descriptions
+  d'activité, couleur choisie à la main, réordonnancement des projets.
 - Taux horaire, montants, génération de facture.
 - Synchronisation, cloud, API, intégration Kimai/Toggl/Redmine.
 - Objectifs journaliers, alertes de dépassement, statistiques.
@@ -82,8 +94,9 @@ Explicitement hors périmètre, pour garder l'outil simple :
 - **Aucun compteur dans la barre.** L'information tient dans la **couleur de
   l'icône**, et elle répond à la seule question qui compte d'un coup d'œil —
   *ai-je saisi ma journée ?*
-  - **Orange** : le jour courant est à 0, rien n'est saisi.
-  - **Vert** : le jour courant porte une valeur > 0.
+  - **Orange** : le jour courant est à 0 sur **tous** les projets, rien n'est saisi.
+  - **Vert** : le jour courant porte une valeur > 0 sur **au moins un** projet. La
+    question est « ai-je saisi ma journée ? », pas « ai-je saisi ce projet ? ».
   - **Neutre** (couleur du panel) : le jour courant n'est pas affiché du tout — un
     week-end alors que les week-ends sont masqués (§6). Un jour non travaillé n'a
     pas à être réclamé.
@@ -96,18 +109,24 @@ Explicitement hors périmètre, pour garder l'outil simple :
 ┌────────────────────────────────────────────────────┐
 │  ‹      7 – 13 septembre 2026     ›  [ Today ]     │   (1)
 ├────────────────────────────────────────────────────┤
+│  (■ Default)  ( Client A )  ( + )                  │   (1b)
+├────────────────────────────────────────────────────┤
 │   Lun    Mar    Mer    Jeu   [VEN]    Sam    Dim   │   (2)
 │   07     08     09     10     11      12     13    │
 │                                                    │
 │  [ + ]  [ + ]  [ + ]  [ + ]  [ + ]  [ + ]  [ + ]   │   (3)
-│   8 h    7 h   7.5h    8 h    4 h    0 h    0 h    │   (4)
+│   8 h    7 h    4 h    8 h    4 h    0 h    0 h    │   (4)
 │  [ − ]  [ − ]  [ − ]  [ − ]  [ − ]  [ − ]  [ − ]   │   (3)
+│                +3.5                 +2             │   (4b)
 ├────────────────────────────────────────────────────┤
-│  Septembre 2026                          34.5 h    │   (5)
+│  Septembre 2026                                    │   (5)
+│  ■ Default                               34.5 h    │
+│  ■ Client A                               12 h     │
 ├────────────────────────────────────────────────────┤
 │                            [ Export CSV ]  [ ⚙ ]   │   (6)
 └────────────────────────────────────────────────────┘
 
+  ■ Default = projet actif (pastille pleine, à sa couleur)
   VEN = aujourd'hui (mis en évidence)
   Sam, Dim = jours futurs : grisés, mais éditables comme les autres
 ```
@@ -122,7 +141,7 @@ Explicitement hors périmètre, pour garder l'outil simple :
   `7 – 13 septembre 2026`, ou `28 septembre – 4 octobre 2026` à cheval sur deux mois,
   avec les deux années si la semaine change d'année.
 - `‹` recule d'une semaine, `›` avance d'une semaine. **Aucune borne** dans un sens
-  ni dans l'autre : le futur est éditable (§4.3), il n'y a donc plus de raison de
+  ni dans l'autre : le futur est éditable (§4.4), il n'y a donc plus de raison de
   bloquer la navigation avant.
 - **Chaque ouverture du popup repart sur la semaine courante** : la navigation n'est
   pas mémorisée d'une ouverture à l'autre. Le popup répond d'abord à « combien
@@ -130,6 +149,16 @@ Explicitement hors périmètre, pour garder l'outil simple :
 - **Aujourd'hui** : ramène la fenêtre sur la semaine courante. Désactivé quand elle
   y est déjà. Il vit ici, avec les dates et les flèches, parce qu'il navigue — pas
   dans la barre d'actions du bas, qui porte les commandes globales.
+
+**(1b) Sélecteur de projet**
+
+- Une pastille par projet, dans l'ordre du fichier de données, à la couleur du
+  projet. Le **projet actif** a sa pastille pleine, les autres sont en contour.
+- Clic sur une pastille inactive : elle devient le projet actif. Toute la grille
+  (3), (4) et la molette agissent alors sur ce projet.
+- Le projet actif est **mémorisé** d'une ouverture à l'autre (§6), contrairement à
+  la semaine : on enchaîne souvent plusieurs jours sur la même mission.
+- La gestion des projets (création, renommage, suppression) est décrite en §3.3.
 
 **(2) Bandeau de la semaine**
 
@@ -165,13 +194,15 @@ Explicitement hors périmètre, pour garder l'outil simple :
 **(3) Boutons + / −**
 
 - Disposition **verticale** par colonne : `+` au-dessus de la valeur, `−` en dessous.
-- Chaque clic modifie la valeur du jour de la colonne d'un **pas configurable**
+- Chaque clic modifie la valeur du jour de la colonne, **pour le projet actif**, d'un
+  **pas configurable**
   (**0.5 / 1 / 2 / 4 h**, défaut **0.5 h**, cf. §6).
 - Effet **immédiat** : mise à jour de la valeur, du total du mois et de la couleur de
   l'icône, puis persistance (§4.2). Pas de bouton « valider ».
 - `−` est désactivé quand la valeur est à 0 ; `+` est désactivé au **plafond
   journalier** configurable (§6, défaut **12 h**). Une valeur saisie au clavier est
-  elle aussi ramenée à ce plafond.
+  elle aussi ramenée à ce plafond. Le plafond s'applique **par projet** : les autres
+  projets du même jour ne bloquent jamais `+`.
 - **Molette** sur la colonne : équivalent à `+` / `−` (raccourci ergonomique).
 
 **(4) Valeur du jour**
@@ -181,11 +212,25 @@ Explicitement hors périmètre, pour garder l'outil simple :
 - Clic sur la valeur : passe en **saisie directe** au clavier (champ éditable),
   pour corriger un jour sans cliquer 16 fois. Validation à `Entrée`, annulation à
   `Échap`. Accepte `7.5`, `7,5` et `7h30`.
+- La valeur est la part du **projet actif**. Elle est affichée **à la couleur du
+  projet**, pour qu'on voie toujours sur quel projet on saisit.
+
+**(4b) Heures des autres projets**
+
+- Sous chaque colonne, en petit et grisé : la **somme des autres projets** ce jour-là
+  (`+3.5`), et rien quand elle est nulle.
+- Ce n'est pas éditable. Cette ligne sert de garde-fou contre la saisie sur le
+  mauvais projet : un jour déjà rempli ailleurs se voit avant de cliquer.
 
 **(5) Total du mois**
 
 - Libellé du mois affiché dans la fenêtre + **somme des heures de ce mois calendaire**
   (tous les jours du mois, pas seulement les 7 affichés).
+- **Une ligne par projet**, avec sa pastille de couleur et
+  son total du mois. Le projet actif est en gras. Les projets à 0 h ce mois-là sont
+  affichés eux aussi : la liste ne dépasse jamais 4 lignes et ne doit pas bouger
+  d'un mois à l'autre. Il n'y a **pas de total tous projets** : on facture projet par
+  projet.
 - Si la semaine chevauche deux mois, le mois retenu est :
   - sur la **semaine courante**, le **mois d'aujourd'hui** — le 29 septembre, la
     semaine du 28 septembre au 4 octobre totalise septembre, pas octobre ;
@@ -207,7 +252,37 @@ Explicitement hors périmètre, pour garder l'outil simple :
 - **⚙** : ouvre la fenêtre de préférences (`extension.openPreferences()`) et ferme le
   popup. Évite le détour par l'application Extensions pour changer un réglage.
 
-### 3.3 Ce qu'il n'y a pas
+### 3.3 Gestion des projets
+
+Tout se passe **dans le popup**, pas dans les préférences. Les noms de projets vivent
+dans le fichier de données (§4.1), et seul le process du shell écrit ce fichier. Si
+`prefs.js`, qui tourne dans un autre process, renommait un projet, il entrerait en
+concurrence avec l'écriture debouncée du shell (§4.2).
+
+- **Créer** : la pastille `+` en bout de sélecteur. Elle ouvre un champ de saisie du
+  nom (`Entrée` valide, `Échap` annule), et le nouveau projet devient actif. Elle
+  disparaît à 4 projets.
+- **Renommer** : clic sur la pastille du projet **déjà actif**. Elle passe en champ
+  de saisie, comme la valeur d'un jour (4). Le projet migré s'appelle `Default` et
+  se renomme ainsi.
+- **Nom** : non vide après `trim`, et unique sans tenir compte de la casse. Les noms
+  `date`, `day` et `total` sont **réservés**, sans tenir compte de la casse : ce sont
+  des en-têtes du CSV (§5), et une colonne en double rendrait le fichier ambigu. Un
+  nom refusé garde le champ ouvert en erreur, sans valeur de repli silencieuse.
+- **Supprimer** : on renomme le projet avec un nom vide. Ce n'est accepté que si le
+  projet n'a **aucune heure, tous mois confondus**. Sinon, c'est refusé : supprimer
+  des heures, c'est détruire de la preuve de facturation (§4.2), et le JSON reste
+  éditable à la main pour qui le veut vraiment. Le dernier projet ne se supprime
+  jamais.
+- **Couleur** : fixée par la **position** du projet dans la liste, dans une palette
+  de 4 couleurs qui évite l'orange et le vert de l'icône (§3.1) : **bleu, jaune,
+  violet, rouge**, pris dans la palette GNOME. Les teintes doivent être **éloignées
+  sur le cercle chromatique** : un premier essai bleu / violet / rose / brun donnait
+  trois couleurs indiscernables. Toutes sont assez claires pour un texte sombre sur la
+  pastille active. Supprimer un projet décale la couleur des suivants, ce qui est rare
+  et assumé.
+
+### 3.4 Ce qu'il n'y a pas
 
 Pas de « reset de fin de mois ». Les données restent, l'affichage et l'export sont
 **bornés au mois** — c'est le bornage qui remplace le reset. Un reset détruirait la
@@ -219,20 +294,39 @@ preuve en cas de contestation d'une facture.
 
 ### 4.1 Modèle
 
-Une entrée = **une date** + **une durée en heures**. Rien d'autre.
+Un projet = **un nom** + ses jours. Une entrée = **une date** + **une durée en
+heures**. Rien d'autre.
 
 ```json
 {
-  "version": 1,
-  "days": {
-    "2026-09-08": 7,
-    "2026-09-09": 7.5,
-    "2026-09-10": 8,
-    "2026-09-11": 4,
-    "2026-09-12": 2
-  }
+  "version": 2,
+  "projects": [
+    {
+      "name": "Default",
+      "days": {
+        "2026-09-08": 7,
+        "2026-09-09": 4,
+        "2026-09-10": 8
+      }
+    },
+    {
+      "name": "Client A",
+      "days": {
+        "2026-09-09": 3.5
+      }
+    }
+  ]
 }
 ```
+
+- `projects` est une **liste**, pas un objet : son ordre donne l'ordre des pastilles
+  et la couleur (§3.3), et il doit survivre à un aller-retour JSON.
+- Le nom est la seule identité d'un projet, sans identifiant technique. Le fichier
+  reste ainsi lisible tel quel pour qui le relit en cas de litige.
+- Un fichier **relu** (édité à la main) avec plus de 4 projets ou des noms en double
+  est chargé tel quel, sans rien perdre. Les règles de §3.3 ne s'appliquent qu'aux
+  saisies faites dans le popup.
+- Une liste vide ou absente redonne un projet `Default` vide.
 
 - Clé : date ISO `YYYY-MM-DD`, en **heure locale** (pas d'UTC : un jour de travail
   est une notion locale).
@@ -256,10 +350,30 @@ Une entrée = **une date** + **une durée en heures**. Rien d'autre.
   même cette copie échoue, l'écriture se désactive plutôt que de détruire quoi que
   ce soit.
 
-### 4.3 Règles de validation
+### 4.3 Migration depuis la version 1
 
-- Valeur bornée à **[0, `max-hours`]** heures, `max-hours` ≤ 24 (§6). La borne
-  dure de 24 h reste dans le stockage : un jour ne peut pas dépasser 24 h.
+Le format v1 (`{"version": 1, "days": {…}}`) reste **lu indéfiniment** :
+
+- au chargement, un fichier v1 devient **un projet unique nommé `Default`** qui porte
+  tous ses jours, sans aucune perte ;
+- **avant la première écriture v2**, le fichier d'origine est copié à côté, en
+  `data.json.v1`, une fois pour toutes. Si cette copie existe déjà, elle n'est
+  jamais écrasée. Si la copie échoue, l'écriture se désactive, comme pour un fichier
+  corrompu (§4.2) ;
+- un fichier sans champ `version` est traité comme du v1 ;
+- une **version inconnue** (> 2), écrite par une version future de l'extension, est
+  traitée comme un fichier illisible : il est sauvegardé et n'est pas écrasé.
+
+⚠️ **Le retour à une version antérieure de l'extension n'est pas supporté.** Une v1
+lirait un fichier v2 comme vide, puis l'écraserait au premier clic. Le filet de
+sécurité, c'est `data.json.v1`, qui contient les heures d'avant la migration.
+
+### 4.4 Règles de validation
+
+- Valeur bornée à **[0, `max-hours`]** heures **par projet**, `max-hours` ≤ 24
+  (§6). La borne dure de 24 h reste dans le stockage, elle aussi par projet. La somme
+  de plusieurs projets sur un même jour n'est **pas** bornée : c'est volontaire, pour
+  rester simple.
 - Arrondi au **multiple de 0.25 h** le plus proche à la saisie directe.
 - **Le futur est autorisé** : un jour à venir se saisit comme un autre, il est
   seulement grisé (§3.2). Pas de borne à la navigation, ni dans le passé ni dans le
@@ -288,25 +402,41 @@ Une entrée = **une date** + **une durée en heures**. Rien d'autre.
 - Le **choix du dossier** se fait donc dans `prefs.js`, qui est un **vrai process
   Gtk** : `Gtk.FileDialog.select_folder()`, sans portal.
 - Séparateur `,`, encodage UTF-8, fin de ligne `\n`, en-tête inclus.
-- **En-tête en anglais** (`date,day,hours`), volontairement **non traduit** : le
-  fichier est relu par un tableur ou un script, ses colonnes ne doivent pas changer
-  avec la locale. Les **noms de jours**, eux, suivent la locale.
+- **Un seul fichier pour le mois, tous projets confondus**, avec **une colonne par
+  projet ayant au moins une heure ce mois-là**. Les projets à 0 h sont omis. Si aucun
+  projet n'a d'heure, il ne reste que `date,day,total`, à 0.
+- Les colonnes projet suivent l'ordre du fichier de données. Leur en-tête est le
+  **nom du projet**, échappé en CSV (RFC 4180 : entre guillemets s'il contient `,`,
+  `"` ou un retour à la ligne, et `"` doublé).
+- Une **dernière colonne `total`** donne la somme des projets du jour. Le plafond
+  étant par projet (§4.4), c'est elle qui fait ressortir une journée trop chargée à
+  la relecture. Le popup n'affiche toujours pas de total tous projets (§3.2 (5)) :
+  on facture projet par projet, ce total ne sert qu'à se relire.
+- **En-têtes fixes en anglais** (`date`, `day`, `total`, `TOTAL`), volontairement **non
+  traduits** : le fichier est relu par un tableur ou un script, ses colonnes ne
+  doivent pas changer avec la locale. Les **noms de jours**, eux, suivent la locale.
 - **Tous les jours du mois** sont émis, y compris ceux à 0 — une facture se relit
   plus facilement avec les jours non travaillés visibles. Les week-ends masqués sont
   exportés eux aussi.
-- Une **ligne de total** en fin de fichier.
+- Une **ligne de total** en fin de fichier, avec un total par colonne projet et le
+  total général dans la colonne `total`.
 
 ```csv
-date,day,hours
-2026-09-01,mardi,8
-2026-09-02,mercredi,7.5
-2026-09-03,jeudi,0
+date,day,Default,Client A,total
+2026-09-01,mardi,8,0,8
+2026-09-02,mercredi,4,3.5,7.5
+2026-09-03,jeudi,0,0,0
 ...
-2026-09-30,mercredi,6
-TOTAL,,142.5
+2026-09-30,mercredi,6,0,6
+TOTAL,,142.5,12,154.5
 ```
 
-- Succès : notification GNOME avec le chemin complet et le total exporté. **Un clic
+⚠️ Le format change par rapport à la version 1 : la colonne `hours` devient une
+colonne par projet, suivie de `total`. Un script qui lisait `hours` doit être
+adapté.
+
+- Succès : notification GNOME avec le chemin complet et le total exporté par
+  projet. **Un clic
   sur la notification ouvre le dossier.**
 
 ---
@@ -324,9 +454,12 @@ Fenêtre de préférences (`prefs.js`, Adw) :
 | `reminder-time`    | string | `'18:00'` | Heure du rappel, `HH:MM` en heure locale                                              |
 | `export-dir`       | string | `''`      | Dossier de l'export CSV (vide = Documents)                                            |
 | `data-path`        | string | `''`      | Chemin du fichier de données (vide = défaut XDG)                                      |
+| `active-project`   | int    | `0`       | Position du projet actif dans `projects` (§4.1), sans UI : mémorisé par le popup      |
 
 Les préférences vivent dans **GSettings** ; **les données de facturation n'y vivent
-pas** (cf. §4.2).
+pas** (cf. §4.2). Les **noms de projets** non plus : ils sont dans le fichier de
+données (§3.3). `max-hours` est un plafond **par projet** (§4.4). Un
+`active-project` hors limites retombe sur `0`.
 
 ### Masquage des week-ends
 
@@ -340,7 +473,8 @@ pas** (cf. §4.2).
 
 - **Désactivé par défaut** : l'extension ne notifie rien tant qu'on ne l'a pas demandé.
 - Une fois activé : **une** notification par jour à `reminder-time`, dont le corps
-  rappelle le total déjà saisi aujourd'hui. **Un clic dessus ouvre le popup.**
+  rappelle le total déjà saisi aujourd'hui, **tous projets confondus**. Il n'y a
+  jamais de rappel par projet (§2). **Un clic dessus ouvre le popup.**
 - Le timer est **réarmé sur l'horloge murale** après chaque déclenchement : la dérive
   ne s'accumule pas. Une machine suspendue à l'heure du rappel le reçoit **en retard**
   au réveil — c'est assumé, un rappel tardif vaut mieux qu'un rappel perdu.
@@ -386,6 +520,22 @@ pas** (cf. §4.2).
 - [ ] Les données survivent à un redémarrage du shell et à une déconnexion.
 - [ ] Un fichier de données corrompu ne fait pas planter le shell et n'est pas écrasé.
 - [ ] Le changement de jour à minuit met à jour l'affichage sans redémarrage.
+- [ ] Un `data.json` v1 s'ouvre sur un projet `Default` portant toutes ses heures.
+- [ ] La première écriture v2 laisse une copie `data.json.v1` intacte, jamais écrasée.
+- [ ] Une version de fichier inconnue (> 2) n'est jamais écrasée.
+- [ ] `+` / `−`, molette et saisie clavier n'agissent que sur le projet actif.
+- [ ] Le projet actif est mémorisé d'une ouverture du popup à l'autre.
+- [ ] Les valeurs du jour sont affichées à la couleur du projet actif.
+- [ ] Chaque colonne affiche la somme des autres projets du jour, rien si elle est 0.
+- [ ] L'icône est verte dès qu'un projet quelconque a des heures aujourd'hui.
+- [ ] Le plafond `max-hours` s'applique par projet.
+- [ ] La pastille `+` crée un projet, et disparaît à 4 projets.
+- [ ] Un projet se renomme ; un nom vide, en double ou réservé (`date`, `day`,
+      `total`) est refusé.
+- [ ] Un projet portant des heures ne peut pas être supprimé ; le dernier non plus.
+- [ ] Le CSV a une colonne par projet ayant des heures ce mois-là, puis une colonne
+      `total` par jour, et un TOTAL par colonne.
+- [ ] Un nom de projet contenant `,` ou `"` produit un CSV valide.
 
 ---
 
@@ -404,3 +554,7 @@ pas** (cf. §4.2).
    une copie datée mensuelle, pour se prémunir d'une erreur de manipulation ?
 5. **Jours fériés** : les griser dans le bandeau comme les week-ends, ou les traiter
    exactement comme les autres jours ?
+6. **Archivage d'un projet terminé** : un projet fini mais avec des heures ne peut
+   pas être supprimé (§3.3), il occupe donc une des 4 places pour toujours. Faut-il
+   un état « archivé » (exclu du sélecteur, toujours exporté) ? Pour l'instant, on
+   le renomme et on le réutilise, ou on édite le JSON à la main.

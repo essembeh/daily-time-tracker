@@ -1,6 +1,8 @@
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 
+import {capitalize} from './hours.js';
+
 /**
  * ISO key of a date, in LOCAL time: a working day is a local notion, and these keys
  * sort and compare lexicographically, which the whole extension relies on.
@@ -34,8 +36,7 @@ export function isWeekend(date) {
  * monthTag(), one character saved in a column that has none to spare.
  */
 export function dayTag(date) {
-    const name = date.format('%a').replace(/[.\s]/g, '');
-    return name.charAt(0).toUpperCase() + name.slice(1);
+    return capitalize(date.format('%a').replace(/[.\s]/g, ''));
 }
 
 /**
@@ -51,7 +52,7 @@ export function monthTag(date) {
  * First day of the week for the current locale: Monday in fr, Sunday in en_US. This
  * is what the shell's own calendar uses; fall back to Monday if it ever disappears.
  */
-export function weekStartDay() {
+function weekStartDay() {
     return Shell.util_get_week_start ? Shell.util_get_week_start() : 1;
 }
 

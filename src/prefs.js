@@ -129,8 +129,8 @@ export default class DailyTimeTrackerPrefs extends ExtensionPreferences {
 
         const dataGroup = new Adw.PreferencesGroup({
             title: _('Data'),
-            description: _('Plain JSON, one line per day worked — editable by hand, ' +
-                'versionable, and never leaving this machine.'),
+            description: _('Plain JSON, the hours of each project day by day — ' +
+                'editable by hand, versionable, and never leaving this machine.'),
         });
         page.add(dataGroup);
 

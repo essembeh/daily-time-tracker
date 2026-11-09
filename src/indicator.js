@@ -10,12 +10,14 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {buildMonthCsv, defaultFileName, resolveExportDir, writeCsv} from './csvExport.js';
+import {buildMonthCsv, defaultFileName, resolveExportDir} from './csvExport.js';
+import {ensureParentDir, writeText} from './files.js';
 import {Storage} from './storage.js';
 import {dayKey, dayTag, isWeekend, monthTag, startOfDay, startOfWeek, today}
     from './dates.js';
 import {GRAIN_HOURS, MAX_HOURS, capitalize, clampHours, formatHours, parseHours,
-    parseTimeOfDay} from './hours.js';
+    parseTimeOfDay, round2} from './hours.js';
+import {MAX_PROJECTS, projectColor, validateProjectName} from './projects.js';
 
 /** One calendar week per screen, starting on the locale's first day. */
 const DAYS = 7;
@@ -40,6 +42,18 @@ function setClass(actor, name, enabled) {
         actor.remove_style_class_name(name);
 }
 
+/** `Enter` commits; `Esc` and leaving the field cancel. */
+function connectEntry(entry, onCommit, onCancel) {
+    entry.clutter_text.connect('activate', () => onCommit());
+    entry.clutter_text.connect('key-focus-out', () => onCancel());
+    entry.clutter_text.connect('key-press-event', (_text, event) => {
+        if (event.get_key_symbol() !== Clutter.KEY_Escape)
+            return Clutter.EVENT_PROPAGATE;
+        onCancel();
+        return Clutter.EVENT_STOP;
+    });
+}
+
 export const TimeTrackerIndicator = GObject.registerClass(
 class TimeTrackerIndicator extends PanelMenu.Button {
     _init(extension) {
@@ -57,6 +71,9 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         // Month of the total and of the CSV export, resolved by _refresh().
         this._month = null;
         this._editing = null;
+        // Project name being typed: {index} to rename, {index: -1} to create.
+        this._projectEdit = null;
+        this._projectsIdleId = 0;
         this._scrollDelta = 0;
         this._midnightId = 0;
         this._reminderId = 0;
@@ -75,20 +92,21 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         this._settings.connectObject(
             'changed::step-hours', () => this._refresh(),
             'changed::max-hours', () => this._refresh(),
-            'changed::show-weekends', () => this._onShowWeekendsChanged(),
+            'changed::show-weekends', () => this._onViewChanged(),
             'changed::data-path', () => this._reloadStorage(),
+            'changed::active-project', () => this._onViewChanged(),
             'changed::reminder-enabled', () => this._rescheduleReminder(),
             'changed::reminder-time', () => this._rescheduleReminder(),
             this);
 
         this.menu.connectObject('open-state-changed', (_menu, isOpen) => {
-            this._cancelEdit();
-            if (isOpen) {
-                // Every opening starts on the current week, whatever was browsed
-                // last time; the shell may also have been open across midnight.
-                this._anchor = startOfWeek(today());
-                this._refresh();
-            }
+            this._cancelProjectEdit();
+            // Every opening starts on the current week, whatever was browsed last
+            // time; the shell may also have been open across midnight.
+            if (isOpen)
+                this._goToday();
+            else
+                this._cancelEdit();
         }, this);
 
         this._scheduleMidnight();
@@ -97,12 +115,13 @@ class TimeTrackerIndicator extends PanelMenu.Button {
     }
 
     destroy() {
-        for (const id of [this._midnightId, this._reminderId]) {
+        for (const id of [this._midnightId, this._reminderId, this._projectsIdleId]) {
             if (id)
                 GLib.Source.remove(id);
         }
         this._midnightId = 0;
         this._reminderId = 0;
+        this._projectsIdleId = 0;
         this._openPreferences = null;
         this._settings?.disconnectObject(this);
         this.menu?.disconnectObject(this);
@@ -115,15 +134,20 @@ class TimeTrackerIndicator extends PanelMenu.Button {
 
     // -- building ----------------------------------------------------------
 
-    _buildMenu() {
-        const header = new PopupMenu.PopupBaseMenuItem({
+    /** A non-reactive popup row holding `actors`, optionally followed by a separator. */
+    _addSection(actors, separator = true) {
+        const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
         });
-        this._prevButton = this._navButton(
-            'go-previous-symbolic', () => this._shiftWindow(-DAYS));
-        this._nextButton = this._navButton(
-            'go-next-symbolic', () => this._shiftWindow(DAYS));
+        for (const actor of actors)
+            item.add_child(actor);
+        this.menu.addMenuItem(item);
+        if (separator)
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+    }
+
+    _buildMenu() {
         this._headerLabel = new St.Label({
             style_class: 'dtt-header',
             x_expand: true,
@@ -136,17 +160,16 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
         });
         this._todayButton.connect('clicked', () => this._goToday());
-        header.add_child(this._prevButton);
-        header.add_child(this._headerLabel);
-        header.add_child(this._nextButton);
-        header.add_child(this._todayButton);
-        this.menu.addMenuItem(header);
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._addSection([
+            this._navButton('go-previous-symbolic', () => this._shiftWindow(-DAYS)),
+            this._headerLabel,
+            this._navButton('go-next-symbolic', () => this._shiftWindow(DAYS)),
+            this._todayButton,
+        ]);
 
-        const grid = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
+        this._projectsBox = new St.BoxLayout({style_class: 'dtt-projects', x_expand: true});
+        this._addSection([this._projectsBox]);
+
         const gridBox = new St.BoxLayout({style_class: 'dtt-grid', x_expand: true});
         for (let index = 0; index < DAYS; index++) {
             const column = this._buildColumn(index);
@@ -154,32 +177,22 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             gridBox.add_child(column.separator);
             gridBox.add_child(column.actor);
         }
-        grid.add_child(gridBox);
-        this.menu.addMenuItem(grid);
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._addSection([gridBox]);
 
-        const month = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
-        this._monthLabel = new St.Label({
-            style_class: 'dtt-month',
+        const monthBox = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
         });
-        this._monthTotalLabel = new St.Label({
-            style_class: 'dtt-month-total',
-            y_align: Clutter.ActorAlign.CENTER,
+        this._monthLabel = new St.Label({style_class: 'dtt-month'});
+        // One row per project, rebuilt by _refresh(): never more than a handful.
+        this._monthRows = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            x_expand: true,
         });
-        month.add_child(this._monthLabel);
-        month.add_child(this._monthTotalLabel);
-        this.menu.addMenuItem(month);
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        monthBox.add_child(this._monthLabel);
+        monthBox.add_child(this._monthRows);
+        this._addSection([monthBox]);
 
-        const actions = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
         const exportButton = new St.Button({
             label: _('Export CSV'),
             style_class: 'dtt-action button',
@@ -197,9 +210,7 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             this.menu.close();
             this._openPreferences();
         });
-        actions.add_child(exportButton);
-        actions.add_child(prefsButton);
-        this.menu.addMenuItem(actions);
+        this._addSection([exportButton, prefsButton], false);
     }
 
     _navButton(iconName, callback) {
@@ -250,6 +261,12 @@ class TimeTrackerIndicator extends PanelMenu.Button {
                 can_focus: true,
                 visible: false,
             }),
+            // Hours logged on the other projects that day: a guard against typing
+            // into the wrong one. Empty, not hidden, to keep columns aligned.
+            others: new St.Label({
+                style_class: 'dtt-others',
+                x_align: Clutter.ActorAlign.CENTER,
+            }),
         };
 
         column.plus.connect('clicked', () => this._step(column, +1));
@@ -257,15 +274,7 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         column.value.connect('clicked', () => this._startEdit(column));
         actor.connect('scroll-event', (_actor, event) => this._onScroll(column, event));
 
-        column.entry.clutter_text.connect('activate', () => this._commitEdit(column));
-        column.entry.clutter_text.connect('key-focus-out', () => this._cancelEdit());
-        column.entry.clutter_text.connect('key-press-event', (_text, event) => {
-            if (event.get_key_symbol() === Clutter.KEY_Escape) {
-                this._cancelEdit();
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
-        });
+        connectEntry(column.entry, () => this._commitEdit(column), () => this._cancelEdit());
 
         actor.add_child(column.month);
         actor.add_child(column.name);
@@ -274,6 +283,7 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         actor.add_child(column.value);
         actor.add_child(column.entry);
         actor.add_child(column.minus);
+        actor.add_child(column.others);
         return column;
     }
 
@@ -281,6 +291,17 @@ class TimeTrackerIndicator extends PanelMenu.Button {
 
     _dateForColumn(index) {
         return this._anchor.add_days(index);
+    }
+
+    /** Out of range (project removed, file hand-edited) falls back to the first. */
+    _active() {
+        const index = this._settings.get_int('active-project');
+        return index < this._storage.count ? index : 0;
+    }
+
+    /** Hidden weekends are neither displayed, nor nagged about. */
+    _isShown(date) {
+        return this._settings.get_boolean('show-weekends') || !isWeekend(date);
     }
 
     _maxHours() {
@@ -291,15 +312,16 @@ class TimeTrackerIndicator extends PanelMenu.Button {
     _refresh() {
         const todayKey = dayKey(today());
         const max = this._maxHours();
+        const active = this._active();
+        const color = `color: ${projectColor(active)};`;
 
         // The total follows today's month while the current week is shown, otherwise
         // the week's last visible day; days of any other month are dimmed. Resolved
         // in a first pass because hiding weekends can move that last day.
-        const showWeekends = this._settings.get_boolean('show-weekends');
         const visibleDates = [];
         for (let index = 0; index < DAYS; index++) {
             const date = this._dateForColumn(index);
-            if (showWeekends || !isWeekend(date))
+            if (this._isShown(date))
                 visibleDates.push(date);
         }
         const onCurrentWeek = dayKey(this._anchor) === dayKey(startOfWeek(today()));
@@ -316,9 +338,9 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         for (const column of this._columns) {
             const date = this._dateForColumn(column.index);
             const key = dayKey(date);
-            const hours = this._storage.get(key);
+            const hours = this._storage.get(active, key);
 
-            column.actor.visible = showWeekends || !isWeekend(date);
+            column.actor.visible = this._isShown(date);
             column.separator.visible = false;
             if (!column.actor.visible)
                 continue;
@@ -333,6 +355,9 @@ class TimeTrackerIndicator extends PanelMenu.Button {
             column.name.text = dayTag(date);
             column.number.text = date.format('%d');
             column.value.label = `${formatHours(hours)} h`;
+            column.value.style = color;
+            const others = round2(this._storage.dayTotal(key) - hours);
+            column.others.text = others > 0 ? `+${formatHours(others)}` : '';
 
             setClass(column.actor, 'dtt-today', key === todayKey);
             setClass(column.actor, 'dtt-other-month', date.get_month() !== month);
@@ -349,8 +374,10 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         }
 
         this._monthLabel.text = capitalize(reference.format('%B %Y'));
-        this._monthTotalLabel.text =
-            `${formatHours(this._storage.monthTotal(this._month.year, month))} h`;
+        this._refreshMonthRows(active);
+        // Rebuilding the pills under an open name entry would drop what is typed.
+        if (!this._projectEdit)
+            this._queueRenderProjects();
 
         // Navigation is unbounded in both directions now that the future is
         // editable; only "Today" knows whether it has anything to do.
@@ -363,10 +390,165 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         const now = today();
         // A hidden weekend is not a day to fill in: neither orange nor green, the
         // icon simply keeps the panel colour rather than nagging about a day off.
-        const tracked = this._settings.get_boolean('show-weekends') || !isWeekend(now);
-        const logged = this._storage.get(dayKey(now)) > 0;
+        const tracked = this._isShown(now);
+        // Logged means any project: "did I fill in my day", not "this project".
+        const logged = this._storage.dayTotal(dayKey(now)) > 0;
         setClass(this._icon, 'dtt-icon-logged', tracked && logged);
         setClass(this._icon, 'dtt-icon-empty', tracked && !logged);
+    }
+
+    _refreshMonthRows(active) {
+        this._monthRows.destroy_all_children();
+        const {year, month} = this._month;
+        this._storage.names.forEach((name, index) => {
+            const row = new St.BoxLayout({
+                style_class: index === active ? 'dtt-month-row dtt-active' : 'dtt-month-row',
+                x_expand: true,
+            });
+            row.add_child(new St.Widget({
+                style_class: 'dtt-swatch',
+                style: `background-color: ${projectColor(index)};`,
+                y_align: Clutter.ActorAlign.CENTER,
+            }));
+            row.add_child(new St.Label({
+                text: name,
+                x_expand: true,
+                y_align: Clutter.ActorAlign.CENTER,
+            }));
+            row.add_child(new St.Label({
+                text: `${formatHours(this._storage.monthTotal(index, year, month))} h`,
+                y_align: Clutter.ActorAlign.CENTER,
+            }));
+            this._monthRows.add_child(row);
+        });
+    }
+
+    /**
+     * Pills are rebuilt from an idle: the rebuild is triggered from a pill's
+     * `clicked` or an entry's `activate`, and must not destroy that very actor.
+     */
+    _queueRenderProjects() {
+        if (this._projectsIdleId)
+            return;
+        this._projectsIdleId = GLib.idle_add_once(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._projectsIdleId = 0;
+            this._renderProjects();
+        });
+    }
+
+    /** One pill per project, the active one filled; `+` until MAX_PROJECTS. */
+    _renderProjects() {
+        this._projectsBox.destroy_all_children();
+        const active = this._active();
+        const edit = this._projectEdit;
+        let entry = null;
+
+        this._storage.names.forEach((name, index) => {
+            if (edit?.index === index) {
+                entry = this._projectEntry(name);
+                this._projectsBox.add_child(entry);
+                return;
+            }
+            const color = projectColor(index);
+            const pill = new St.Button({
+                label: name,
+                style_class: 'dtt-project button',
+                style: index === active
+                    ? `border-color: ${color}; background-color: ${color}; color: #1e1e1e;`
+                    : `border-color: ${color};`,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            // A click on the active pill renames it, on another one selects it.
+            pill.connect('clicked', () => {
+                if (index === this._active())
+                    this._startProjectEdit(index);
+                else
+                    this._settings.set_int('active-project', index);
+            });
+            this._projectsBox.add_child(pill);
+        });
+
+        if (edit?.index === -1) {
+            entry = this._projectEntry('');
+            this._projectsBox.add_child(entry);
+        } else if (this._storage.count < MAX_PROJECTS) {
+            const add = new St.Button({
+                label: '+',
+                style_class: 'dtt-project dtt-project-add button',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            add.connect('clicked', () => this._startProjectEdit(-1));
+            this._projectsBox.add_child(add);
+        }
+
+        if (entry) {
+            entry.grab_key_focus();
+            entry.clutter_text.set_selection(0, -1);
+        }
+    }
+
+    _projectEntry(text) {
+        const entry = new St.Entry({
+            style_class: 'dtt-project-entry',
+            text,
+            hint_text: _('Project name'),
+            can_focus: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        connectEntry(entry,
+            () => this._commitProjectEdit(entry), () => this._cancelProjectEdit());
+        return entry;
+    }
+
+    _startProjectEdit(index) {
+        this._cancelEdit();
+        this._projectEdit = {index};
+        this._queueRenderProjects();
+    }
+
+    _cancelProjectEdit() {
+        if (!this._projectEdit)
+            return;
+        this._projectEdit = null;
+        this._queueRenderProjects();
+    }
+
+    /** A refused name keeps the entry open and flagged, never a silent fallback. */
+    _commitProjectEdit(entry) {
+        const {index} = this._projectEdit;
+        const raw = entry.get_text();
+
+        if (index >= 0 && !raw.trim()) {
+            // Emptying the name removes the project — only when it holds no hours.
+            if (!this._storage.removeProject(index)) {
+                this._flagProjectEntry(entry, this._storage.count > 1
+                    ? _('Has hours, cannot be removed')
+                    : _('The last project cannot be removed'));
+                return;
+            }
+            this._projectEdit = null;
+            this._settings.set_int('active-project', Math.max(0, index - 1));
+            this._refresh();
+            return;
+        }
+
+        const name = validateProjectName(raw, this._storage.names, index);
+        if (name === null) {
+            this._flagProjectEntry(entry, _('Project name'));
+            return;
+        }
+        this._projectEdit = null;
+        if (index >= 0)
+            this._storage.renameProject(index, name);
+        else
+            this._settings.set_int('active-project', this._storage.addProject(name));
+        this._refresh();
+    }
+
+    _flagProjectEntry(entry, hint) {
+        entry.add_style_class_name('dtt-entry-error');
+        entry.hint_text = hint;
+        entry.clutter_text.set_selection(0, -1);
     }
 
     /** "7 – 13 septembre 2026", or "28 septembre – 4 octobre 2026" across a boundary. */
@@ -383,7 +565,8 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         return `${clean(start.format('%e'))} – ${clean(end.format('%e %B %Y'))}`;
     }
 
-    _onShowWeekendsChanged() {
+    /** A day entry left open would point at a column that now means something else. */
+    _onViewChanged() {
         this._cancelEdit();
         this._refresh();
     }
@@ -392,11 +575,13 @@ class TimeTrackerIndicator extends PanelMenu.Button {
 
     _step(column, sign) {
         const step = this._settings.get_double('step-hours');
-        this._setHours(column, this._storage.get(column.key) + sign * step);
+        this._setHours(column, this._storage.get(this._active(), column.key) + sign * step);
     }
 
+    /** The cap is per project: other projects that day never block `+`. */
     _setHours(column, hours) {
-        this._storage.set(column.key, Math.min(this._maxHours(), clampHours(hours)));
+        this._storage.set(this._active(), column.key,
+            Math.min(this._maxHours(), clampHours(hours)));
         this._refresh();
     }
 
@@ -427,7 +612,7 @@ class TimeTrackerIndicator extends PanelMenu.Button {
     _startEdit(column) {
         this._cancelEdit();
         this._editing = column;
-        column.entry.set_text(formatHours(this._storage.get(column.key)));
+        column.entry.set_text(formatHours(this._storage.get(this._active(), column.key)));
         column.value.hide();
         column.entry.show();
         column.entry.grab_key_focus();
@@ -469,7 +654,7 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         this._storage.flush();
         // Same month as the total on screen, never a different one.
         const {year, month} = this._month;
-        const {content, total} = buildMonthCsv(this._storage, year, month);
+        const {content, totals} = buildMonthCsv(this._storage, year, month);
         const file = Gio.File.new_for_path(GLib.build_filenamev([
             resolveExportDir(this._settings.get_string('export-dir')),
             defaultFileName(year, month),
@@ -477,19 +662,25 @@ class TimeTrackerIndicator extends PanelMenu.Button {
         this.menu.close();
 
         try {
-            writeCsv(file, content);
+            ensureParentDir(file);
+            writeText(file, content);
         } catch (e) {
             console.error(`daily-time-tracker: CSV export failed: ${e}`);
             this._notify(_('Export failed'), e.message);
             return;
         }
+        const summary = totals.length
+            ? totals.map(({name, hours}) => `${name}: ${formatHours(hours)} h`).join(', ')
+            : '0 h';
         this._notify(
             _('Export done'),
-            `${formatHours(total)} h → ${file.get_path()}`,
+            `${summary} → ${file.get_path()}`,
             () => Gio.AppInfo.launch_default_for_uri(file.get_parent().get_uri(), null));
     }
 
     _reloadStorage() {
+        this._cancelEdit();
+        this._projectEdit = null;
         this._storage.destroy();
         this._storage = new Storage(
             Storage.resolvePath(this._settings.get_string('data-path')));
@@ -577,10 +768,10 @@ class TimeTrackerIndicator extends PanelMenu.Button {
     _fireReminder() {
         const now = today();
         // Nothing to log on a day that is not even displayed.
-        if (!this._settings.get_boolean('show-weekends') && isWeekend(now))
+        if (!this._isShown(now))
             return;
 
-        const hours = this._storage.get(dayKey(now));
+        const hours = this._storage.dayTotal(dayKey(now));
         this._notify(
             _('Log your hours'),
             `${_('Today')}: ${formatHours(hours)} h`,

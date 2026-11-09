@@ -39,5 +39,11 @@
       <summary>Data file</summary>
       <description>Path of the JSON data file. Empty means the XDG default, ~/.local/share/daily-time-tracker/data.json.</description>
     </key>
+    <key name="active-project" type="i">
+      <range min="0" max="1000"/>
+      <default>0</default>
+      <summary>Active project</summary>
+      <description>Position of the active project in the data file. Remembered by the popup, no UI; out of range falls back to the first project.</description>
+    </key>
   </schema>
 </schemalist>

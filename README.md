@@ -4,7 +4,7 @@
 
 **Write down your hours. Nothing else.**
 
-*No timer. No projects. No cloud. A GNOME Shell extension that does one thing.*
+*No timer. No cloud. A GNOME Shell extension that does one thing.*
 
 [![build](https://github.com/essembeh/daily-time-tracker/actions/workflows/build.yml/badge.svg)](https://github.com/essembeh/daily-time-tracker/actions/workflows/build.yml)
 [![GNOME Shell 50](https://img.shields.io/badge/GNOME%20Shell-50-4A86CF?logo=gnome&logoColor=white)](https://release.gnome.org/)
@@ -23,14 +23,19 @@ That is the whole extension.
                                     ┌──────────────────────────────────────────────┐
   ⏱ ← orange: today is empty        │  ‹   7 – 13 September 2026   ›  [ Today ]    │
   ⏱ ← green:  today is logged       ├──────────────────────────────────────────────┤
+                                    │  (■ Default)  ( Client A )  ( + )            │
+                                    ├──────────────────────────────────────────────┤
                                     │   Mon   Tue   Wed   Thu  [FRI]  Sat   Sun    │
                                     │   07    08    09    10    11    12    13     │
                                     │                                              │
                                     │  [ + ] [ + ] [ + ] [ + ] [ + ] [ + ] [ + ]   │
                                     │   8 h   7 h  7.5h   8 h   4 h   0 h   0 h    │
                                     │  [ − ] [ − ] [ − ] [ − ] [ − ] [ − ] [ − ]   │
+                                    │              +3.5         +2                 │
                                     ├──────────────────────────────────────────────┤
-                                    │  September 2026                     34.5 h   │
+                                    │  September 2026                              │
+                                    │  ■ Default                          34.5 h   │
+                                    │  ■ Client A                           12 h   │
                                     ├──────────────────────────────────────────────┤
                                     │                    [ Export CSV ]   [ ⚙ ]    │
                                     └──────────────────────────────────────────────┘
@@ -43,6 +48,9 @@ That is the whole extension.
 
 - 🟠 **A colour, not a counter.** The panel icon is orange while today is empty, green
   once it is logged — no number cluttering your top bar.
+- 🎨 **Up to four projects**, each just a name and a colour. One click on a pill picks
+  the project you log into, the grid takes its colour, and a small grey `+3.5` under a
+  day shows what the other projects already hold — hard to log into the wrong one.
 - 🗓️ **One calendar week per screen**, starting on your locale's first day (Monday in
   France, Sunday in the US). Future days are dimmed but fully editable — noting
   Friday on Wednesday is planning, not cheating.
@@ -52,8 +60,9 @@ That is the whole extension.
   confirms, `Esc` drops it.
 - 📅 **The monthly total**, always in sight — and month boundaries are impossible to
   miss while navigating.
-- 📄 **CSV export** of the displayed month in one click: every day included, a
-  `TOTAL` line, and a folder you pick once in the settings. The notification opens it.
+- 📄 **CSV export** of the displayed month in one click: every day included, one
+  column per project with hours, a daily `total`, a `TOTAL` line, and a folder you
+  pick once in the settings. The notification opens it.
 - 🔔 **An optional daily reminder**, off by default. Once on: one notification a day at
   your time, and clicking it opens the popup.
 - 🙈 **Hide weekends** if you do not work them — the grid drops to five columns, the
@@ -66,7 +75,8 @@ No stopwatch, no start/stop, no idle detection. Entry is **declarative**: a time
 produces precise but wrong numbers (breaks, meetings away from the desk, the day you
 forgot to stop it) and demands a discipline nobody keeps.
 
-No projects, no clients, no tags, no hourly rate, no invoice generation. And
+No more than four projects, no clients, no tags, no hourly rate, no invoice
+generation. And
 **nothing leaves the machine**: no sync, no cloud, no API, no network code at all.
 
 See [the spec](docs/specs/features.md) — §0 (KISS) is the project's constitution.
@@ -77,15 +87,25 @@ See [the spec](docs/specs/features.md) — §0 (KISS) is the project's constitut
 
 ```json
 {
-  "version": 1,
-  "days": {
-    "2026-09-11": 4,
-    "2026-09-12": 7.5
-  }
+  "version": 2,
+  "projects": [
+    {
+      "name": "Default",
+      "days": {
+        "2026-09-11": 4,
+        "2026-09-12": 7.5
+      }
+    }
+  ]
 }
 ```
 
 Readable, editable by hand, versionable in git. Days at `0` are simply absent.
+
+A version 1 file (a single `days` object, before projects existed) is read as one
+project named `Default`, and copied once to `data.json.v1` before the first write in
+the new format. Going back to an older release of the extension is not supported: it
+would read the new file as empty — `data.json.v1` is the way back.
 
 This file is billing evidence, and it is treated as such: writes are **atomic**
 (a shell killed mid-write leaves the previous file intact) and **debounced**, and a
@@ -132,6 +152,12 @@ The symlink must point at `src/`, not at the repo root — otherwise the shell f
 | Show weekends   | on · off                       | on        |
 | Export folder   | any folder                     | Documents |
 | Data file       | any path (empty = XDG default) | empty     |
+
+## Projects
+
+Managed in the popup: `+` creates one, a click on the active pill renames it, and an
+empty name removes it — only if it holds no hours at all. `date`, `day` and `total`
+are refused as names: they are CSV headers.
 
 ## Hacking
 

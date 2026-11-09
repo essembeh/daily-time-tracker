@@ -28,24 +28,28 @@ repo layout, tooling, CI, markdown conventions and dev workflow are taken from i
 | `src/extension.js`            | entry point, `enable()` / `disable()`        |
 | `src/indicator.js`            | panel icon + popup, all the UI               |
 | `src/storage.js`              | the JSON data file, atomic and debounced     |
+| `src/projects.js`             | **pure helpers**: data format, names, CSV    |
 | `src/csvExport.js`            | builds the monthly CSV                       |
+| `src/files.js`                | Gio file helpers: `~/`, parent dir, writes   |
 | `src/hours.js`                | **pure helpers, no `gi://` import**          |
 | `src/dates.js`                | GLib date helpers                            |
 | `src/prefs.js`                | Adw preferences, separate Gtk process        |
-| `tests/unit.mjs`              | node tests over `hours.js`                   |
+| `tests/unit.mjs`              | node tests over `hours.js` and `projects.js` |
 | `tests/check-markdown.mjs`    | table alignment enforced by CI               |
 | `tests/nested.sh`             | nested shell running the working tree        |
 | `.github/workflows/build.yml` | checks, then zip, then release on `v*` tag   |
 
-**Keep `src/hours.js` free of `gi://` imports.** It is the only module node can
-import, so everything testable without a shell belongs there — parsing, rounding,
-formatting. A `gi://` import in it silently kills `tests/unit.mjs`.
+**Keep `src/hours.js` and `src/projects.js` free of `gi://` imports.** They are the
+only modules node can import, so everything testable without a shell belongs there —
+parsing, rounding, formatting, the data format, the CSV. A `gi://` import in either
+silently kills `tests/unit.mjs`.
 
 ## Project invariants
 
 - **Manual entry only.** Any proposal that drifts toward a timer, idle detection or
   automatic capture is out of scope — say so instead of implementing it.
-- **One flat data set**: no projects, no clients, no tags, no categories.
+- **At most 4 projects, each just a name**: no clients, no rates, no tags, no
+  categories, no colour setting (colour comes from the position).
 - **The data file is the billing evidence.** It is plain JSON under
   `$XDG_DATA_HOME/daily-time-tracker/data.json`, hand-editable and git-friendly.
   Writes are atomic (temp file + `rename`) and debounced. An unparseable file is
@@ -89,18 +93,17 @@ When Seb asks for a new feature, do NOT just implement it:
 
 ## Environment (NixOS)
 
-- No dev tools in PATH (`node`, `glib-compile-schemas`, `gjs`… are all absent). Get
-  them through `nix-shell -p <pkg> --run '<cmd>'` — **never** hardcode or hunt for
-  `/nix/store/...` paths (they break on every GC / channel update):
+- No dev tools in the global PATH. `shell.nix` provides them (`node`, `glib`), loaded
+  by direnv through `.envrc` — run commands with `direnv exec . <cmd>`. **Never**
+  hardcode or hunt for `/nix/store/...` paths (they break on every GC / channel
+  update). Any other tool: add it to `shell.nix`, after asking Seb (it fetches into
+  his store).
   - syntax check (ESM, so read from stdin — `node --check file.js` parses as CJS and
     chokes on `import`):
-    `nix-shell -p nodejs-slim --run 'for f in src/*.js; do node --input-type=module --check < $f || echo $f; done'`
-  - after ANY gschema change:
-    `nix-shell -p glib --run 'glib-compile-schemas src/schemas/'`
-- `nix-shell -p` may fetch from the network into Seb's store: **ask him before the
-  first use of a package** in a session.
+    `direnv exec . sh -c 'for f in src/*.js; do node --input-type=module --check < $f || echo $f; done'`
+  - after ANY gschema change: `direnv exec . glib-compile-schemas src/schemas/`
 - Run what the CI runs, before saying a change is ready:
-  `nix-shell -p nodejs-slim --run 'node tests/unit.mjs && node tests/check-markdown.mjs'`
+  `direnv exec . sh -c 'node tests/unit.mjs && node tests/check-markdown.mjs'`
 
 ## Dev workflow
 

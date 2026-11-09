@@ -102,3 +102,50 @@
     padding: 6px;
     border-radius: 8px;
 }
+
+/* Project selector: colours come inline from projects.js PALETTE, by position. */
+.dtt-projects {
+    spacing: 6px;
+}
+
+.dtt-project {
+    padding: 3px 10px;
+    border-radius: 99px;
+    border: 2px solid transparent;
+}
+
+.dtt-project-add {
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.dtt-project-entry {
+    min-width: 120px;
+}
+
+.dtt-entry-error {
+    border: 2px solid #e01b24;
+}
+
+.dtt-others {
+    font-size: 0.75em;
+    opacity: 0.6;
+}
+
+.dtt-month {
+    font-weight: bold;
+    padding-bottom: 2px;
+}
+
+.dtt-month-row {
+    spacing: 8px;
+}
+
+.dtt-month-row.dtt-active {
+    font-weight: bold;
+}
+
+.dtt-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
